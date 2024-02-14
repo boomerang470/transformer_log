@@ -5,6 +5,7 @@ sys.path.append("../")
 
 import pickle
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
@@ -18,6 +19,16 @@ from neurallog.utils import classification_report
 log_file = "../logs/BGL.log"
 embed_dim = 768  # Embedding size for each token
 max_len = 75
+
+try:
+  tpu = tf.distribute.cluster_resolver.TPUClusterResolver()  # TPU detection
+  print('Running on TPU ', tpu.cluster_spec().as_dict()['worker'])
+except ValueError:
+  raise BaseException('ERROR: Not connected to a TPU runtime; please see the previous cell in this notebook for instructions!')
+
+tf.config.experimental_connect_to_cluster(tpu)
+tf.tpu.experimental.initialize_tpu_system(tpu)
+tpu_strategy = tf.distribute.TPUStrategy(tpu)
 
 
 class BatchGenerator(Sequence):
@@ -62,8 +73,8 @@ def train_generator(training_generator, validate_generator, num_train_samples, n
                                               optimizer_type='adamw')
 
     loss_object = SparseCategoricalCrossentropy()
-
-    model = NeuralLog(768, ff_dim=2048, max_len=75, num_heads=12, dropout=0.1)
+    with tpu_strategy.scope(): # creating the model in the TPUStrategy scope means we will train the model on the TPU
+        model = NeuralLog(768, ff_dim=2048, max_len=75, num_heads=12, dropout=0.1)
 
     # model.load_weights("hdfs_transformer.hdf5")
 
